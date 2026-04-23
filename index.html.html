@@ -1,0 +1,562 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  #game-root {
+    font-family: 'Courier New', monospace;
+    background: #0a0e14;
+    color: #e0e8f0;
+    min-height: 600px;
+    padding: 12px;
+    border-radius: 8px;
+    user-select: none;
+  }
+  .hud {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .hud-panel {
+    background: #111820;
+    border: 1px solid #1e3a4a;
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .hud-label { font-size: 10px; color: #4a7a9b; text-transform: uppercase; letter-spacing: 1px; }
+  .hud-value { font-size: 13px; color: #7dd3fc; font-weight: bold; margin-top: 2px; }
+  .order-list { list-style: none; }
+  .order-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; padding: 2px 0;
+    color: #94a3b8;
+  }
+  .order-item.done { color: #22c55e; text-decoration: line-through; }
+  .order-item.active { color: #fbbf24; font-weight: bold; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .game-area {
+    position: relative;
+    background: #080c10;
+    border: 1px solid #1e3a4a;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  #game-canvas {
+    display: block;
+  }
+  .controls-hint {
+    display: flex; gap: 12px; justify-content: center;
+    margin-top: 8px; font-size: 10px; color: #4a7a9b;
+  }
+  .key-badge {
+    background: #111820; border: 1px solid #1e3a4a;
+    border-radius: 3px; padding: 1px 5px;
+    font-size: 10px; color: #7dd3fc;
+  }
+  .modal-overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
+    border-radius: 6px;
+  }
+  .modal-box {
+    background: #111820;
+    border: 2px solid #1e3a4a;
+    border-radius: 10px;
+    padding: 24px 32px;
+    text-align: center;
+    max-width: 320px;
+  }
+  .modal-title { font-size: 18px; color: #7dd3fc; margin-bottom: 8px; }
+  .modal-sub { font-size: 12px; color: #4a7a9b; margin-bottom: 16px; line-height: 1.5; }
+  .btn-start {
+    background: #0e4a6e; border: 1px solid #7dd3fc;
+    color: #7dd3fc; padding: 8px 24px;
+    border-radius: 4px; cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 13px; letter-spacing: 1px;
+  }
+  .btn-start:hover { background: #1a6a9a; }
+  .wms-confirm {
+    background: #0a1a10;
+    border: 1px solid #22c55e;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: #22c55e;
+    animation: pulse-green 1s infinite;
+  }
+  @keyframes pulse-green {
+    0%,100% { border-color: #22c55e; }
+    50% { border-color: #86efac; box-shadow: 0 0 6px #22c55e44; }
+  }
+  .label-card {
+    background: #1a0a00;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-top: 6px;
+    font-size: 10px;
+  }
+  .label-title { color: #f59e0b; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+  .label-content { color: #fcd34d; font-size: 11px; margin-top: 2px; }
+</style>
+
+<div id="game-root">
+  <h2 class="sr-only">Warehouse Picking Game — simulação de separação de pedidos em armazém</h2>
+  <div class="hud">
+    <div class="hud-panel">
+      <div class="hud-label">Ordem de Separação</div>
+      <div class="hud-value" id="order-id">OS-2024-001</div>
+      <ul class="order-list" id="order-list"></ul>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Status WMS</div>
+      <div class="hud-value" id="wms-status">AGUARDANDO</div>
+      <div id="wms-detail" style="font-size:10px;color:#4a7a9b;margin-top:4px;">Pressione ESPAÇO para confirmar separação</div>
+      <div id="wms-confirm-box" style="display:none;" class="wms-confirm">✓ SEPARAÇÃO CONFIRMADA</div>
+      <div id="label-box" style="display:none;" class="label-card">
+        <div class="label-title">Etiqueta Cliente</div>
+        <div class="label-content" id="label-content"></div>
+      </div>
+    </div>
+    <div class="hud-panel">
+      <div class="hud-label">Progresso</div>
+      <div class="hud-value" id="progress-val">0 / 0</div>
+      <div style="margin-top:6px;background:#0a0e14;border-radius:4px;height:6px;overflow:hidden;">
+        <div id="progress-bar" style="height:100%;width:0%;background:#22c55e;transition:width 0.4s;border-radius:4px;"></div>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:#4a7a9b;">Tempo: <span id="timer-val" style="color:#7dd3fc;">00:00</span></div>
+    </div>
+  </div>
+
+  <div class="game-area">
+    <canvas id="game-canvas" width="656" height="380"></canvas>
+    <div class="modal-overlay" id="modal-start">
+      <div class="modal-box">
+        <div class="modal-title">⬛ WMS PICKING GAME</div>
+        <div class="modal-sub">
+          Navegue pelo armazém e colete todos os itens da ordem de separação.<br><br>
+          <span style="color:#fbbf24;">Siga os picking lights!</span>
+        </div>
+        <button class="btn-start" id="btn-start">▶ INICIAR SEPARAÇÃO</button>
+      </div>
+    </div>
+    <div class="modal-overlay" id="modal-end" style="display:none;">
+      <div class="modal-box">
+        <div class="modal-title" style="color:#22c55e;">✓ ORDEM COMPLETA!</div>
+        <div class="modal-sub" id="end-stats"></div>
+        <button class="btn-start" id="btn-restart" style="border-color:#22c55e;color:#22c55e;background:#0a1a10;">↺ NOVA ORDEM</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls-hint">
+    <span><span class="key-badge">W A S D</span> ou <span class="key-badge">↑ ↓ ← →</span> Mover</span>
+    <span><span class="key-badge">ESPAÇO</span> Confirmar separação</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const TILE = 32;
+const COLS = Math.floor(W / TILE);
+const ROWS = Math.floor(H / TILE);
+
+const ORDERS = [
+  { id: 'OS-2024-001', items: [
+    { sku: 'SKU-A01', desc: 'Caixa Prod. A', qty: 2, shelf: {col:3, row:3}, zone:'A' },
+    { sku: 'SKU-B03', desc: 'Frasco Prod. B', qty: 1, shelf: {col:8, row:3}, zone:'B' },
+    { sku: 'SKU-C07', desc: 'Pacote Prod. C', qty: 3, shelf: {col:13, row:3}, zone:'C' },
+    { sku: 'SKU-A04', desc: 'Caixa Prod. D', qty: 1, shelf: {col:3, row:7}, zone:'A' },
+    { sku: 'SKU-B09', desc: 'Frasco Prod. E', qty: 2, shelf: {col:8, row:7}, zone:'B' },
+  ], client:'CLIENTE LTDA', clientCode:'CLI-0042' }
+];
+
+const SHELF_DEFS = [
+  {col:2,row:2,w:3,h:2,zone:'A',color:'#1a3a5a'},{col:7,row:2,w:3,h:2,zone:'B',color:'#1a3a2a'},
+  {col:12,row:2,w:3,h:2,zone:'C',color:'#3a2a1a'},{col:2,row:6,w:3,h:2,zone:'A',color:'#1a3a5a'},
+  {col:7,row:6,w:3,h:2,zone:'B',color:'#1a3a2a'},{col:12,row:6,w:3,h:2,zone:'C',color:'#3a2a1a'},
+  {col:17,row:2,w:3,h:2,zone:'D',color:'#2a1a3a'},{col:17,row:6,w:3,h:2,zone:'D',color:'#2a1a3a'},
+];
+
+const ZONE_COLORS = {A:'#0e4a6e',B:'#0e4a2a',C:'#4a2e0e',D:'#2a0e4a'};
+const ZONE_LIGHT = {A:'#7dd3fc',B:'#6ee7b7',C:'#fcd34d',D:'#c4b5fd'};
+
+let state = {};
+let keys = {};
+let gameRunning = false;
+let animFrame;
+let timerInterval;
+let startTime;
+let pickLightAnim = 0;
+let confirmCooldown = 0;
+let playerMoveTimer = 0;
+let hoverTimer = 0;
+
+function initGame() {
+  const order = ORDERS[0];
+  state = {
+    player: { x: 10 * TILE + TILE/2, y: 9 * TILE + TILE/2, size: 10, dir: 0 },
+    order,
+    pickedItems: [],
+    currentTarget: null,
+    phase: 'moving',
+    confirmed: false,
+    showLabel: false,
+    elapsed: 0,
+  };
+  updateOrderUI();
+  document.getElementById('wms-confirm-box').style.display = 'none';
+  document.getElementById('label-box').style.display = 'none';
+  document.getElementById('wms-status').textContent = 'PICKING ATIVO';
+  document.getElementById('wms-detail').textContent = 'Dirija-se ao picking light piscando';
+  startTime = Date.now();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateTimer, 1000);
+  findNextTarget();
+}
+
+function updateTimer() {
+  if (!gameRunning) return;
+  state.elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = String(Math.floor(state.elapsed/60)).padStart(2,'0');
+  const s = String(state.elapsed%60).padStart(2,'0');
+  document.getElementById('timer-val').textContent = m+':'+s;
+}
+
+function isBlocked(nx, ny) {
+  const margin = 6;
+  for (const s of SHELF_DEFS) {
+    const sx = s.col * TILE, sy = s.row * TILE;
+    const sw = s.w * TILE, sh = s.h * TILE;
+    if (nx + margin > sx && nx - margin < sx+sw && ny + margin > sy && ny - margin < sy+sh) return true;
+  }
+  if (nx < 12 || nx > W-12 || ny < 12 || ny > H-12) return true;
+  return false;
+}
+
+function findNextTarget() {
+  const remaining = state.order.items.filter(it => !state.pickedItems.includes(it.sku));
+  state.currentTarget = remaining.length > 0 ? remaining[0] : null;
+  updateOrderUI();
+  updateWMS();
+}
+
+function updateOrderUI() {
+  const list = document.getElementById('order-list');
+  list.innerHTML = '';
+  for (const item of state.order.items) {
+    const li = document.createElement('li');
+    li.className = 'order-item' +
+      (state.pickedItems.includes(item.sku) ? ' done' :
+       (state.currentTarget && state.currentTarget.sku === item.sku ? ' active' : ''));
+    li.innerHTML = `<span class="dot"></span>${item.sku} x${item.qty}`;
+    list.appendChild(li);
+  }
+  const total = state.order.items.length;
+  const done = state.pickedItems.length;
+  document.getElementById('progress-val').textContent = done + ' / ' + total;
+  document.getElementById('progress-bar').style.width = (done/total*100) + '%';
+}
+
+function updateWMS() {
+  if (!state.currentTarget) {
+    document.getElementById('wms-status').textContent = 'ORDEM COMPLETA';
+    document.getElementById('wms-detail').textContent = 'Todos os itens separados!';
+  } else {
+    document.getElementById('wms-status').textContent = 'PICKING ATIVO';
+  }
+}
+
+function playerNearTarget() {
+  if (!state.currentTarget) return false;
+  const t = state.currentTarget.shelf;
+  const cx = (t.col + 1) * TILE;
+  const cy = (t.row + 1.5) * TILE;
+  const dx = state.player.x - cx;
+  const dy = state.player.y - cy;
+  return Math.sqrt(dx*dx + dy*dy) < TILE * 1.8;
+}
+
+function confirmPick() {
+  if (!state.currentTarget || !playerNearTarget() || confirmCooldown > 0) return;
+  state.pickedItems.push(state.currentTarget.sku);
+  confirmCooldown = 90;
+  const pickedSku = state.currentTarget.sku;
+  const pickedDesc = state.currentTarget.desc;
+  const pickedQty = state.currentTarget.qty;
+  document.getElementById('wms-confirm-box').style.display = 'block';
+  document.getElementById('wms-confirm-box').textContent = `✓ ${pickedSku} x${pickedQty} — CONFIRMADO`;
+  setTimeout(() => {
+    document.getElementById('wms-confirm-box').style.display = 'none';
+    findNextTarget();
+    if (!state.currentTarget) {
+      setTimeout(showLabel, 600);
+    }
+  }, 1500);
+}
+
+function showLabel() {
+  const order = state.order;
+  document.getElementById('label-box').style.display = 'block';
+  document.getElementById('label-content').innerHTML =
+    `${order.client}<br>Cód: ${order.clientCode}<br>OS: ${order.id}`;
+  document.getElementById('wms-status').textContent = 'ETIQUETA EMITIDA';
+  document.getElementById('wms-detail').textContent = '✓ Etiqueta disponível';
+  setTimeout(() => endGame(), 2000);
+}
+
+function endGame() {
+  gameRunning = false;
+  clearInterval(timerInterval);
+  const m = String(Math.floor(state.elapsed/60)).padStart(2,'0');
+  const s = String(state.elapsed%60).padStart(2,'0');
+  document.getElementById('end-stats').innerHTML =
+    `Ordem <strong>${state.order.id}</strong> concluída!<br>
+    Itens separados: ${state.order.items.length}<br>
+    Tempo: ${m}:${s}<br><br>
+    <span style="color:#f59e0b;">Etiqueta impressa para ${state.order.client}</span>`;
+  document.getElementById('modal-end').style.display = 'flex';
+}
+
+function drawGame() {
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#080c10';
+  ctx.fillRect(0,0,W,H);
+
+  // Floor grid subtle
+  ctx.strokeStyle = '#0e1620';
+  ctx.lineWidth = 0.5;
+  for (let c=0;c<COLS;c++) { ctx.beginPath(); ctx.moveTo(c*TILE,0); ctx.lineTo(c*TILE,H); ctx.stroke(); }
+  for (let r=0;r<ROWS;r++) { ctx.beginPath(); ctx.moveTo(0,r*TILE); ctx.lineTo(W,r*TILE); ctx.stroke(); }
+
+  // Floor lanes
+  ctx.fillStyle = '#0c121a';
+  ctx.fillRect(0, 4.5*TILE, W, TILE * 1.5);
+
+  // Zone labels
+  const zones = ['A','B','C','D'];
+  const zoneX = [2,7,12,17];
+  for (let i=0;i<zones.length;i++) {
+    ctx.fillStyle = ZONE_LIGHT[zones[i]] + '22';
+    ctx.fillRect(zoneX[i]*TILE - 4, 1.5*TILE, 4*TILE+8, ROWS*TILE - 3*TILE);
+    ctx.fillStyle = ZONE_LIGHT[zones[i]] + '88';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('ZONA '+zones[i], (zoneX[i]+1.5)*TILE, 1.5*TILE - 3);
+  }
+
+  // Shelves
+  for (const s of SHELF_DEFS) {
+    const sx = s.col*TILE, sy = s.row*TILE, sw = s.w*TILE, sh = s.h*TILE;
+    ctx.fillStyle = s.color;
+    ctx.fillRect(sx, sy, sw, sh);
+    ctx.strokeStyle = ZONE_LIGHT[s.zone] + '55';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, sy, sw, sh);
+    // Shelf detail lines
+    ctx.strokeStyle = ZONE_LIGHT[s.zone] + '33';
+    ctx.lineWidth = 0.5;
+    for (let d=1;d<s.h;d++) {
+      ctx.beginPath(); ctx.moveTo(sx, sy+d*TILE); ctx.lineTo(sx+sw, sy+d*TILE); ctx.stroke();
+    }
+    for (let d=1;d<s.w;d++) {
+      ctx.beginPath(); ctx.moveTo(sx+d*TILE, sy); ctx.lineTo(sx+d*TILE, sy+sh); ctx.stroke();
+    }
+    // Zone label on shelf
+    ctx.fillStyle = ZONE_LIGHT[s.zone] + 'aa';
+    ctx.font = 'bold 9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.zone, sx+sw/2, sy+sh/2+4);
+  }
+
+  // Picking lights
+  pickLightAnim = (pickLightAnim + 1) % 60;
+  if (state.currentTarget) {
+    const t = state.currentTarget.shelf;
+    const lx = (t.col + 1) * TILE;
+    const ly = (t.row + 0.5) * TILE;
+    const nearPlayer = playerNearTarget();
+    const lightColor = ZONE_LIGHT[state.currentTarget.zone];
+    const alpha = nearPlayer ? 1.0 : 0.4 + 0.6 * Math.sin(pickLightAnim / 60 * Math.PI * 2);
+
+    // Glow ring
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.fillStyle = lightColor;
+    ctx.beginPath();
+    ctx.arc(lx, ly + TILE/2, TILE * (nearPlayer ? 1.5 : 1.2), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // Light indicator
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = lightColor;
+    ctx.beginPath();
+    ctx.arc(lx, ly + TILE/2, nearPlayer ? 10 : 6, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // SKU label
+    if (nearPlayer) {
+      ctx.save();
+      ctx.fillStyle = '#000000cc';
+      ctx.fillRect(lx - 44, ly - 14, 88, 28);
+      ctx.strokeStyle = lightColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx - 44, ly - 14, 88, 28);
+      ctx.fillStyle = lightColor;
+      ctx.font = 'bold 9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(state.currentTarget.sku, lx, ly - 2);
+      ctx.font = '8px Courier New';
+      ctx.fillStyle = '#e0e8f0cc';
+      ctx.fillText(state.currentTarget.desc + ' x' + state.currentTarget.qty, lx, ly + 9);
+      ctx.restore();
+
+      // Confirm prompt
+      const pb = 0.4 + 0.6 * Math.abs(Math.sin(pickLightAnim / 30 * Math.PI));
+      ctx.save();
+      ctx.globalAlpha = pb;
+      ctx.fillStyle = '#000c';
+      ctx.fillRect(lx - 60, ly + TILE + 2, 120, 16);
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '9px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('[ ESPAÇO ] CONFIRMAR SEPARAÇÃO', lx, ly + TILE + 13);
+      ctx.restore();
+    } else {
+      // Arrow guide
+      const px = state.player.x, py = state.player.y;
+      const dx = lx - px, dy = ly + TILE/2 - py;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      if (dist > 50) {
+        const ax = px + (dx/dist)*28, ay = py + (dy/dist)*28;
+        ctx.save();
+        ctx.globalAlpha = 0.4 + 0.4 * Math.sin(pickLightAnim/30*Math.PI);
+        ctx.strokeStyle = lightColor;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px + (dx/dist)*16, py + (dy/dist)*16);
+        ctx.lineTo(ax, ay);
+        const angle = Math.atan2(dy,dx);
+        ctx.lineTo(ax - Math.cos(angle-0.4)*8, ay - Math.sin(angle-0.4)*8);
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - Math.cos(angle+0.4)*8, ay - Math.sin(angle+0.4)*8);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  // Other targets (dim lights)
+  for (const item of state.order.items) {
+    if (state.pickedItems.includes(item.sku)) {
+      const t = item.shelf;
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.arc((t.col+1)*TILE, (t.row+0.5)*TILE + TILE/2, 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    } else if (!state.currentTarget || item.sku !== state.currentTarget.sku) {
+      const t = item.shelf;
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.arc((t.col+1)*TILE, (t.row+0.5)*TILE + TILE/2, 3, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Player
+  const px = state.player.x, py = state.player.y;
+  ctx.save();
+  ctx.fillStyle = '#1e40af';
+  ctx.beginPath();
+  ctx.arc(px, py, 10, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#93c5fd';
+  ctx.beginPath();
+  ctx.arc(px, py, 7, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 8px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('P', px, py + 3);
+  ctx.restore();
+
+  // Legend bottom
+  ctx.fillStyle = '#0a0e14cc';
+  ctx.fillRect(0, H-18, W, 18);
+  ctx.font = '8px Courier New';
+  ctx.textAlign = 'left';
+  const legends = [
+    {c:'#7dd3fc',t:'Zona A'},{c:'#6ee7b7',t:'Zona B'},{c:'#fcd34d',t:'Zona C'},{c:'#c4b5fd',t:'Zona D'},
+    {c:'#93c5fd',t:'Player'},{c:'#fbbf24',t:'Picking Light'},{c:'#22c55e',t:'Coletado'}
+  ];
+  let lx2 = 8;
+  for (const lg of legends) {
+    ctx.fillStyle = lg.c;
+    ctx.beginPath(); ctx.arc(lx2+4, H-9, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(lg.t, lx2+11, H-5);
+    lx2 += 70;
+  }
+
+  if (confirmCooldown > 0) confirmCooldown--;
+}
+
+function gameLoop() {
+  if (!gameRunning) return;
+  const spd = 2.5;
+  let dx = 0, dy = 0;
+  if (keys['ArrowUp']||keys['w']||keys['W']) dy -= spd;
+  if (keys['ArrowDown']||keys['s']||keys['S']) dy += spd;
+  if (keys['ArrowLeft']||keys['a']||keys['A']) dx -= spd;
+  if (keys['ArrowRight']||keys['d']||keys['D']) dx += spd;
+
+  if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+
+  const nx = state.player.x + dx;
+  const ny = state.player.y + dy;
+  if (!isBlocked(nx, state.player.y)) state.player.x = nx;
+  if (!isBlocked(state.player.x, ny)) state.player.y = ny;
+
+  drawGame();
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ' && gameRunning) { e.preventDefault(); confirmPick(); }
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  document.getElementById('modal-start').style.display = 'none';
+  initGame();
+  gameRunning = true;
+  gameLoop();
+});
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+  document.getElementById('modal-end').style.display = 'none';
+  initGame();
+  gameRunning = true;
+  gameLoop();
+});
+
+// Initial static draw
+ctx.fillStyle = '#080c10';
+ctx.fillRect(0,0,W,H);
+</script>
